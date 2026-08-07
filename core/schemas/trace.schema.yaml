@@ -1,0 +1,10 @@
+# Trace Schema — Thought Traceの標準交換フォーマット（コア抽象・Runtime非依存の正版）
+# 正版: docs/05_メモリー/01_メモリーアーキテクチャ仕様書.md
+# 状態: 骨格のみ（雛形）。フィールド定義はPOC実装で充填
+#
+# 目的: 「何を知っていたか」ではなく「どう考えたか」を保存する標準フォーマット。
+# Runtimeが変わっても読み替え可能な形を目指す。
+
+version: "0.0"
+$schema: "http://json-schema.org/draft-07/schema#"
+$comment: "TODO(POC実装): docs/05_メモリー/01_メモリーアーキテクチャ仕様書.md に基づき思考軌跡のフォーマットを定義"

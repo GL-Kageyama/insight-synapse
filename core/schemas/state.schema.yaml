@@ -1,0 +1,13 @@
+# State Schema — 現在状態の構造定義（コア抽象・Runtime非依存の正版）
+# 正版: docs/03_コアコンポーネント/01_状態モデル仕様書.md
+# 状態: 骨格のみ（雛形）。フィールド定義はPOC実装で充填
+#
+# 実装予定の要素（仕様書参照）:
+#   - State Object（15フィールド）
+#   - judgment: normal / abstain（棄権機構）
+#   - unknown_list（importance / status）・unknown_level
+#   - confidence（棄権条件: confidence < 0.3 OR unknown_level >= 0.7）
+
+version: "0.0"
+$schema: "http://json-schema.org/draft-07/schema#"
+$comment: "TODO(POC実装): docs/03_コアコンポーネント/01_状態モデル仕様書.md に基づきフィールドを定義"
