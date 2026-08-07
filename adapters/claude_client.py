@@ -90,6 +90,12 @@ class ClaudeClient:
         return self._call(self.config.evaluation_model, system, user)
 
     def _call(self, model: str, system: str, user: str) -> str:
+        """モデルを呼び出し、テキスト応答を返す。
+
+        空応答は「崩れた出力」として再試行する（wisdom-council-layer 方針）。
+        実ゲートウェイ（deepseek 経由）では稀に空応答を返すことが観測され、
+        これをそのまま返すと空成果物のまま評価され成功率を歪める（2026-08-08 dev検証で35%空）。
+        """
         last_err: Exception | None = None
         for attempt in range(self.config.max_retries):
             try:
@@ -100,9 +106,15 @@ class ClaudeClient:
                     system=system,
                     messages=[{"role": "user", "content": user}],
                 )
-                return "".join(
+                text = "".join(
                     b.text for b in response.content if getattr(b, "type", "") == "text"
-                )
+                ).strip()
+                if text:
+                    return text
+                # 空応答は「崩れた出力」として再試行（wisdom-council-layer 方針）
+                last_err = RuntimeError("空の応答（モデルが空文字列を返した）")
+                if attempt < self.config.max_retries - 1:
+                    time.sleep(2**attempt)
             except (anthropic.APIStatusError, anthropic.APIConnectionError, anthropic.APITimeoutError) as e:
                 last_err = e
                 if attempt < self.config.max_retries - 1:

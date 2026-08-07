@@ -15,9 +15,10 @@ from core.state import UnknownItem, new_state
 
 
 def make_orch() -> Orchestrator:
+    # Step 2 較正（2026-08-08）: 棄権閾値を params.yaml と整合（0.15 / 0.85）
     return Orchestrator(
-        abstain_confidence_lt=0.3,
-        abstain_unknown_level_ge=0.7,
+        abstain_confidence_lt=0.15,
+        abstain_unknown_level_ge=0.85,
         explore_unknown_level_ge=0.6,
         create_confidence_ge=0.75,
         create_unknown_level_le=0.25,
@@ -44,7 +45,7 @@ def state_with_unknown_level(level: float) -> object:
 
 
 def test_abstain_on_low_confidence():
-    """confidence < 0.3 → abstain（high unknown_level 由来）"""
+    """confidence < 0.15 → abstain（high unknown_level 由来）"""
     st = state_with_unknown_level(0.9)
     d = make_orch().decide(st)
     assert d.action == "abstain"
@@ -52,9 +53,17 @@ def test_abstain_on_low_confidence():
 
 
 def test_abstain_on_high_unknown_level():
-    st = state_with_unknown_level(0.8)
+    """unknown_level >= 0.85 → abstain（confidence は 0.2 >= 0.15 で単独では棄権しない）"""
+    st = state_with_unknown_level(0.85)
     d = make_orch().decide(st)
     assert d.action == "abstain"
+
+
+def test_abstain_threshold_recalibrated():
+    """Step 2 較正: 旧閾値 0.7 では abstain だった 0.8 は新閾値では探索になる。"""
+    st = state_with_unknown_level(0.8)
+    d = make_orch().decide(st)
+    assert d.action == "explore"
 
 
 def test_explore_on_unknown_level_ge_06():

@@ -90,3 +90,33 @@ def test_engine_blinding_prompt_has_no_condition_label():
     prompt = client.calls[0]["user"] + client.calls[0]["system"]
     for label in ("B0", "B1", "B2", "C4", "Insight Synapse", "unknown", "Thought Trace"):
         assert label.lower() not in prompt.lower()
+
+
+# ---- Step 2 ルーブリック改訂（2026-08-08）----
+
+def test_rubric_risk_axis_redefined():
+    """Risk 軸が「リスク認識の適切さ」に再定義されていること（Step 2）。"""
+    from evaluation.evaluator import RUBRIC
+
+    # 旧定義「低いほど良い」が消えている
+    assert "低いほど良い" not in RUBRIC
+    # 新定義: リスクを認識し対策を提示することを高評価
+    assert "リスクを特定" in RUBRIC
+    assert "対策" in RUBRIC
+    # 楽観的過ぎることを低評価とする記述がある
+    assert "楽観的" in RUBRIC
+
+
+def test_rubric_quality_rewards_honesty():
+    """Quality 軸に不確実性の区別（知的誠実さ）の基準が追加されていること。"""
+    from evaluation.evaluator import RUBRIC
+
+    assert "不確実性を適切に区別" in RUBRIC
+    assert "不確実なことを断定" in RUBRIC
+
+
+def test_rubric_value_allows_conditional():
+    """Value 軸に条件付き価値の許容が追加されていること。"""
+    from evaluation.evaluator import RUBRIC
+
+    assert "条件付き価値" in RUBRIC

@@ -27,9 +27,12 @@ decision:
   create_when_unknown_level_le: 0.25    # かつ unknown_level <= 0.25 → Create
 
 # 棄権機構（03/00 §3.5 / 11/09 §12 H1）
+# Step 2 較正（2026-08-08）: Step 1 で全20試行 abstain（unknown_level 0.74-0.92）。
+# 閾値 0.7 は AIサービス企画ドメインの初期不確実性に対して過敏だったため、
+# unknown_level_ge を 0.85 に、confidence_lt を 0.15（= 1-0.85 と整合）に再設定。
 abstention:
-  confidence_lt: 0.3     # confidence < 0.3 → abstain
-  unknown_level_ge: 0.7  # unknown_level >= 0.7 → abstain
+  confidence_lt: 0.15    # confidence < 0.15 → abstain
+  unknown_level_ge: 0.85 # unknown_level >= 0.85 → abstain
 
 # 実験統計パラメータ（03/00 §8 / 11/09 §14）
 stats:
@@ -62,3 +65,14 @@ claude:
   generation_model: "claude-sonnet-4-5"   # 生成・判断用（処理条件）
   evaluation_model: "claude-haiku-4-5"    # 評価用（独立評価系統）
   temperature: 0.0                        # 全条件共通（交絡の排除）
+
+# 思考品質レベル（03/00 §3.4 追記）
+# 開発・検証段階の既定は L1（エコノミー）: 素早く試して方向を見る（2026-08-08 ユーザー方針）。
+#   L1 エコノミー    … 探索反復 1回。素の生成よりはかなりマシな品質（列挙した認知状態を反映するだけで改善）
+#   L2 スタンダード  … 探索反復 5回。標準の探索ループ（現行 C4 と同等）
+#   L3 ディープ      … 探索反復 8回。収束まで探索（構想・未実装）
+thinking_quality: 1
+quality_levels:
+  L1: { name: "エコノミー", explore_iterations: 1 }
+  L2: { name: "スタンダード", explore_iterations: 5 }
+  L3: { name: "ディープ", explore_iterations: 8 }

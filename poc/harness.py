@@ -23,7 +23,7 @@ import yaml
 
 from core.orchestrator import Orchestrator
 from memory.store import MemoryStore, TrialRecord
-from poc.conditions import ConditionResult, run_condition
+from poc.conditions import MAX_EXPLORE_ITERATIONS, ConditionResult, run_condition
 from poc.tasks import POCTask
 
 
@@ -81,6 +81,7 @@ class Harness:
         experiment_dir: str | Path,
         pass_threshold: float,
         seed: int = 42,
+        max_explore_iterations: int = MAX_EXPLORE_ITERATIONS,
     ):
         self.generator = generator
         self.evaluator = evaluator
@@ -89,19 +90,43 @@ class Harness:
         self.experiment_dir = Path(experiment_dir)
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
         self.pass_threshold = pass_threshold
+        self.max_explore_iterations = max_explore_iterations
         self.rng = random.Random(seed)
 
     def _run_one(self, condition: str, task: POCTask) -> ConditionResult:
-        return run_condition(
-            condition,
-            self.generator,
-            self.evaluator,
-            self.orchestrator,
-            self.store,
-            task_id=task.id,
-            task_prompt=task.prompt,
-            pass_threshold=self.pass_threshold,
-        )
+        """1試行を実行する。例外は「崩れた出力」として明示的失敗に変換し、実験全体は継続。
+
+        生成系が空応答等で例外を投げても、1試行の失敗で実験全体を中断しない
+        （wisdom-council-layer 方針: サイレントドロップ禁止・明示的な失敗記録）。
+        崩れた出力は手で直さず、error 付きの失敗結果として記録する。
+        """
+        try:
+            return run_condition(
+                condition,
+                self.generator,
+                self.evaluator,
+                self.orchestrator,
+                self.store,
+                task_id=task.id,
+                task_prompt=task.prompt,
+                pass_threshold=self.pass_threshold,
+                max_explore_iterations=self.max_explore_iterations,
+            )
+        except Exception as e:  # noqa: BLE001 — 任意の崩れを明示的失敗に変換する
+            return ConditionResult(
+                condition=condition,
+                task_id=task.id,
+                task_prompt=task.prompt,
+                artifact="",
+                evaluation=None,
+                success=False,
+                abstained=False,
+                decision="error",
+                confidence=0.0,
+                unknown_level=0.0,
+                reason=f"試行中に例外: {e}",
+                error=str(e),
+            )
 
     def run(
         self,

@@ -33,7 +33,7 @@ from poc.report import build_report, write_report  # noqa: E402
 from poc.stats import best_baseline, difference_ci, summarize_condition  # noqa: E402
 from poc.tasks import head_tasks  # noqa: E402
 
-IMPLEMENTED_CONDITIONS = ("B0", "C4")
+IMPLEMENTED_CONDITIONS = ("B0", "B1", "B2", "C4")
 
 
 class MockClaude:
@@ -49,14 +49,35 @@ class MockClaude:
 
     def generate(self, system: str, user: str) -> str:
         self.calls["generate"] += 1
+        if "弱点を正直に振り返って" in system:
+            # B1: 振り返り
+            return "顧客セグメントの具体性が不足しており、価値提案の検証が弱い。"
+        if "問題点を指摘してください" in system:
+            # B2: 自己批評
+            return "差別化要因が曖昧で、競合比較の根拠が薄い。数値で裏付けを補うべき。"
+        if "解決を試みてください" in system:
+            # 探索ステップ: 全 unknown を resolved にする（unknown_level → 0.0 → create）
+            return json.dumps(
+                {
+                    "resolutions": [
+                        {"item": "具体的な顧客セグメントの需要", "status": "resolved", "insight": "B2B向けに需要あり"},
+                        {"item": "競合との差別化要因", "status": "resolved", "insight": "オペレーション特化"},
+                    ],
+                    "known": [],
+                    "hypotheses": [],
+                },
+                ensure_ascii=False,
+            )
         if "既に分かっていること" in system or "分かっていること" in system:
-            # C4: known/unknown 列挙（unknown_level=0.85 → abstain 経路を必ず通す）
+            # C4: known/unknown 列挙
+            # unknown_level = (0.6×1.0 + 0.4×0.5)/1.0 = 0.8 → explore 帯域（0.6〜0.85）に入り、
+            # 探索ループを通って create に到達する（abstain にならない）
             return json.dumps(
                 {
                     "known": ["AIサービスの市場は競争が激しい"],
                     "unknown": [
-                        {"item": "具体的な顧客セグメントの需要", "importance": 0.7, "status": "unresolved"},
-                        {"item": "競合との差別化要因", "importance": 0.3, "status": "partial"},
+                        {"item": "具体的な顧客セグメントの需要", "importance": 0.6, "status": "unresolved"},
+                        {"item": "競合との差別化要因", "importance": 0.4, "status": "partial"},
                     ],
                 },
                 ensure_ascii=False,
@@ -170,11 +191,14 @@ def main(argv: list[str] | None = None) -> int:
         experiment_dir=_REPO_ROOT / args.out_dir,
         pass_threshold=cfg.pass_threshold,
         seed=args.seed,
+        max_explore_iterations=cfg.explore_iterations,
     )
 
     # ---- 実行 ----
     total_trials = len(conditions) * len(tasks) * args.per_condition
-    print(f"[実行] 条件={conditions} タスク={len(tasks)}問 リピート={args.per_condition} 計{total_trials}試行")
+    quality_names = {1: "エコノミー", 2: "スタンダード", 3: "ディープ"}
+    print(f"[実行] 条件={conditions} タスク={len(tasks)}問 リピート={args.per_condition} 計{total_trials}試行"
+          f"（思考品質 L{cfg.thinking_quality} {quality_names.get(cfg.thinking_quality, '?')}）")
     run = harness.run(conditions, tasks, n_reps=args.per_condition)
 
     # ---- 結果サマリ ----

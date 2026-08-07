@@ -72,26 +72,34 @@ def build_report(
     sections.append(ReportSection("成功率", summary_body))
 
     # ---- 効果量 + 判定帯域 ----
-    baseline = best_baseline({c: summaries[c]["success_rate"] for c in conditions})
-    c4 = summaries["C4"]
-    base = summaries[baseline]
-    d = difference_ci(
-        s1=c4["successes"], n1=c4["n"], s2=base["successes"], n2=base["n"]
-    )
-    band_labels = {
-        "reject": "仮説Hを棄却（<5pp）",
-        "indeterminate": "判定保留（5〜20pp・追試必須）",
-        "uncertain": "効果は示唆されるが不確実（20〜39pp・追試必須）",
-        "support": "決定的支持（>=39pp）",
-    }
-    effect_body = (
-        f"- 最良ベースライン: **{baseline}**（成功率 {base['success_rate']*100:.1f}%）\n"
-        f"- C4 成功率: **{c4['success_rate']*100:.1f}%**\n"
-        f"- 効果量: **{d.diff_pp:+.1f}pp**（C4 − {baseline}）\n"
-        f"- 効果量の95%CI: {d.low_pp:+.1f}pp 〜 {d.high_pp:+.1f}pp\n"
-        f"- 判定帯域: **{band_labels[d.judgment]}**\n"
-        f"- 追試ルール（03/00 §8.3）: 最大1回・N=74/群。追試判定 = {d.followup_verdict}\n"
-    )
+    if "C4" in conditions and len(conditions) > 1:
+        baseline = best_baseline({c: summaries[c]["success_rate"] for c in conditions})
+        c4 = summaries["C4"]
+        base = summaries[baseline]
+        d = difference_ci(
+            s1=c4["successes"], n1=c4["n"], s2=base["successes"], n2=base["n"]
+        )
+        band_labels = {
+            "reject": "仮説Hを棄却（<5pp）",
+            "indeterminate": "判定保留（5〜20pp・追試必須）",
+            "uncertain": "効果は示唆されるが不確実（20〜39pp・追試必須）",
+            "support": "決定的支持（>=39pp）",
+        }
+        effect_body = (
+            f"- 最良ベースライン: **{baseline}**（成功率 {base['success_rate']*100:.1f}%）\n"
+            f"- C4 成功率: **{c4['success_rate']*100:.1f}%**\n"
+            f"- 効果量: **{d.diff_pp:+.1f}pp**（C4 − {baseline}）\n"
+            f"- 効果量の95%CI: {d.low_pp:+.1f}pp 〜 {d.high_pp:+.1f}pp\n"
+            f"- 判定帯域: **{band_labels[d.judgment]}**\n"
+            f"- 追試ルール（03/00 §8.3）: 最大1回・N=74/群。追試判定 = {d.followup_verdict}\n"
+        )
+    else:
+        # 単一条件・C4 を含まない実行では効果量は計算できない（最良ベースラインが不在）
+        effect_body = (
+            f"- 効果量は**計算不可**: C4 とベースライン条件（B0/B1/B2）の比較が必要。\n"
+            f"- 現在の条件: {', '.join(conditions)}。成功率の一覧は上表を参照。\n"
+            f"- スモーク検証用の実行であり、仮説Hの判定は行わない（本番 N=20 で判定）。\n"
+        )
     sections.append(ReportSection("効果量と判定", effect_body))
 
     # ---- §14 報告義務チェックリスト ----

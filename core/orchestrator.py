@@ -4,7 +4,8 @@
 数値正版: docs/03_コアコンポーネント/00_数値定義書.md §3.4・§3.5
 
 State を読み、次に取るべき Action を決定論的に返す（Claude は呼ばない）。
-- 棄権（abstain）: confidence < 0.3 OR unknown_level >= 0.7 → 判断を保留し調査へ
+- 棄権（abstain）: confidence < 0.15 OR unknown_level >= 0.85 → 判断を保留し調査へ
+  （Step 2 較正 2026-08-08: 旧 0.3/0.7 は本ドメインで全試行 abstain になったため params.yaml と整合）
 - 探索（explore）: unknown_level >= 0.6 → Explore / Research 優先
 - 制作（create）: confidence >= 0.75 かつ unknown_level <= 0.25 → Create へ
 - 判断保留（otherwise）: 情報収集・代替案検討
@@ -31,8 +32,8 @@ class Orchestrator:
     def __init__(
         self,
         *,
-        abstain_confidence_lt: float = 0.3,
-        abstain_unknown_level_ge: float = 0.7,
+        abstain_confidence_lt: float = 0.15,
+        abstain_unknown_level_ge: float = 0.85,
         explore_unknown_level_ge: float = 0.6,
         create_confidence_ge: float = 0.75,
         create_unknown_level_le: float = 0.25,

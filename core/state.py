@@ -107,16 +107,51 @@ class State:
 
     # ---- 棄権機構（03/00 §3.5）----
 
-    def should_abstain(self, *, confidence_lt: float = 0.3, unknown_level_ge: float = 0.7) -> bool:
+    def should_abstain(self, *, confidence_lt: float = 0.15, unknown_level_ge: float = 0.85) -> bool:
         """棄権条件。いずれかを満たせば判断を下さず明示的に棄権。
 
-        - confidence < confidence_lt（既定 0.3）
-        - unknown_level >= unknown_level_ge（既定 0.7）
+        - confidence < confidence_lt（既定 0.15）
+        - unknown_level >= unknown_level_ge（既定 0.85）
+
+        Step 2 較正（2026-08-08）: 旧値 0.3 / 0.7 は AIサービス企画ドメインの
+        初期 unknown_level（0.74-0.92）で全試行 abstain になったため、
+        config/params.yaml の `abstention` と整合させて 0.15 / 0.85 に再設定。
         """
         return self.confidence < confidence_lt or self.unknown_level >= unknown_level_ge
 
+    # ---- 探索ループの State 反映（03/00 §3.4 / 11/09 §13）----
+
+    def resolve_unknown(self, item: str, status: UnresolvedStatus) -> "State":
+        """探索結果を未知項目に反映する。
+
+        - status="resolved": unknown を unknown リストに残したまま status="resolved" にする
+          （03/00 §3.2 の式では resolved は分子に 0、分母には重要度として残る。
+          remove すると分母からも消え unknown_level が相対値のまま下がらないため）
+        - status="partial": 未解決度 1.0 → 0.5（confidence 計算に反映）
+        - 対象 item が見つからない場合は何もしない（該当なし）
+        """
+        for u in self.unknown:
+            if u.item == item:
+                u.status = status
+                self.refresh_derived()
+                return self
+        return self
+
+    def add_known(self, item: str) -> "State":
+        """探索で得られた既知事項を known に追加（重複はスキップ）。"""
+        if item and item not in self.known:
+            self.known.append(item)
+        return self
+
+    def add_hypothesis(self, statement: str, confidence: float = 0.5) -> "State":
+        """探索で得られた仮説を hypotheses に追加（confidence 計算に反映）。"""
+        if statement:
+            self.hypotheses.append(Hypothesis(statement=statement, confidence=_clamp01(confidence)))
+            self.refresh_derived()
+        return self
+
     def apply_abstention(
-        self, *, confidence_lt: float = 0.3, unknown_level_ge: float = 0.7, reason: str = ""
+        self, *, confidence_lt: float = 0.15, unknown_level_ge: float = 0.85, reason: str = ""
     ) -> "State":
         """棄権機構を適用。条件を満たす場合 judgment="abstain" にし、Reasonを履歴に残す。
 
@@ -180,6 +215,10 @@ class State:
 
 def _unresolved_degree(status: UnresolvedStatus) -> float:
     return {"resolved": 0.0, "partial": 0.5, "unresolved": 1.0}[status]
+
+
+def _clamp01(v: float) -> float:
+    return max(0.0, min(1.0, v))
 
 
 def _now_iso() -> str:

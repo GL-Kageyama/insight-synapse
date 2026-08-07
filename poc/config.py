@@ -55,6 +55,20 @@ class POCConfig:
     def create_unknown_level_le(self) -> float:
         return self.params["decision"]["create_when_unknown_level_le"]
 
+    # ---- 思考品質レベル（03/00 §3.4 追記） ----
+    @property
+    def thinking_quality(self) -> int:
+        """思考品質レベル（1=エコノミー / 2=スタンダード / 3=ディープ）。既定 L2。"""
+        return int(self.params.get("thinking_quality", 2))
+
+    @property
+    def explore_iterations(self) -> int:
+        """思考品質レベルに対応する探索反復上限。"""
+        q = self.thinking_quality
+        levels = self.params.get("quality_levels", {})
+        entry = levels.get(f"L{q}", {})
+        return int(entry.get("explore_iterations", 5))
+
     # ---- 実験統計（03/00 §8） ----
     @property
     def alpha(self) -> float:
