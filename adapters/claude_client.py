@@ -20,12 +20,22 @@ DEFAULT_EVALUATION_MODEL = "claude-haiku-4-5"
 
 @dataclass
 class ClaudeConfig:
-    api_key: str
+    api_key: str = ""
+    auth_token: str = ""
+    base_url: str = ""
     generation_model: str = DEFAULT_GENERATION_MODEL
     evaluation_model: str = DEFAULT_EVALUATION_MODEL
     max_tokens: int = 4096
     temperature: float = 0.0
     max_retries: int = 3
+
+    def __post_init__(self) -> None:
+        """api_key か auth_token のどちらか一方が必須。両方指定時は api_key 優先。"""
+        if not self.api_key and not self.auth_token:
+            raise ValueError(
+                "Claude の認証情報がありません。api_key または auth_token を設定してください。"
+            )
+        self.validate_lineage_separation()
 
     def validate_lineage_separation(self) -> None:
         """生成系と評価系の系統分離を保証する（同一系統は循環評価を招く）。"""
@@ -47,17 +57,29 @@ class ClaudeClient:
         config = config or self._default_config()
         config.validate_lineage_separation()
         self.config = config
-        self.client = anthropic.Anthropic(api_key=config.api_key)
+        # ゲートウェイ対応: api_key 優先、なければ auth_token（ANTHROPIC_AUTH_TOKEN 経由）
+        kwargs: dict = {"base_url": config.base_url or None}
+        if config.api_key:
+            kwargs["api_key"] = config.api_key
+        elif config.auth_token:
+            kwargs["auth_token"] = config.auth_token
+        self.client = anthropic.Anthropic(**kwargs)
 
     @staticmethod
     def _default_config() -> ClaudeConfig:
+        """環境変数から認証情報を解決する。
+
+        通常の Anthropic API:    ANTHROPIC_API_KEY
+        Claude Code 互換ゲートウェイ: ANTHROPIC_AUTH_TOKEN + ANTHROPIC_BASE_URL
+        """
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY が設定されていません。"
-                ".env または環境変数で設定してください（.env.example 参照）。"
-            )
-        return ClaudeConfig(api_key=api_key)
+        auth_token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+        base_url = os.environ.get("ANTHROPIC_BASE_URL", "")
+        return ClaudeConfig(
+            api_key=api_key,
+            auth_token=auth_token,
+            base_url=base_url,
+        )
 
     def generate(self, system: str, user: str) -> str:
         """生成系モデルで呼び出す（Skill: Analysis 用）。"""

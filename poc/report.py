@@ -15,6 +15,7 @@ Step 1 では人間較正（50サンプル）は未実施のため「暫定指�
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -124,12 +125,26 @@ def build_report(
         )
     sections.append(ReportSection("報告義務チェックリスト（§14）", checklist_body))
 
-    # ---- 付記: B1/B2 未実装 ----
+    # ---- 付記: B1/B2 未実装 + 実行バックエンド ----
     appendix = (
         "### 付記\n\n"
         "- B1（Reflexion）/ B2（Self-Refine）は本Step未実装。最良ベースラインは現時点で B0 のみ。\n"
         "- 本レポートの判定は N=20/群 の検出力に基づく暫定値（03/00 §8・11/09 §14）。\n"
     )
+    # §14 報告義務「使用LLM」の透明性: ゲートウェイ経由の実行は実バックエンドを明記する
+    base_url = os.environ.get("ANTHROPIC_BASE_URL", "")
+    if base_url:
+        sonnet_map = os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL", "")
+        haiku_map = os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL", "")
+        appendix += (
+            f"- 実行バックエンド: `{base_url}` 経由。"
+            f"要求モデル: 生成=`{cfg.generation_model}` / 評価=`{cfg.evaluation_model}`。\n"
+        )
+        if sonnet_map and haiku_map:
+            appendix += (
+                f"- ゲートウェイ実マッピング: 生成→`{sonnet_map}` / 評価→`{haiku_map}`。"
+                "系統分離（生成≠評価）は維持。\n"
+            )
     sections.append(ReportSection("付記", appendix))
 
     return "\n".join(s.body for s in sections)

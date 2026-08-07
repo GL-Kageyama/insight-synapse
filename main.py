@@ -135,21 +135,21 @@ def main(argv: list[str] | None = None) -> int:
         generator = mock
         evaluator = mock
     else:
-        claude_cfg = ClaudeConfig(
-            api_key="",  # 実キーは環境変数から
-            generation_model=cfg.generation_model,
-            evaluation_model=cfg.evaluation_model,
-            temperature=cfg.temperature,
-        )
-        claude_cfg.validate_lineage_separation()
         try:
-            claude_cfg.api_key = os.environ["ANTHROPIC_API_KEY"]
-        except KeyError:
-            raise SystemExit(
-                "ANTHROPIC_API_KEY が設定されていません。"
-                "環境変数または .env で設定するか、--mock でスモークランしてください。"
+            claude_cfg = ClaudeConfig(
+                api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+                auth_token=os.environ.get("ANTHROPIC_AUTH_TOKEN", ""),
+                base_url=os.environ.get("ANTHROPIC_BASE_URL", ""),
+                generation_model=cfg.generation_model,
+                evaluation_model=cfg.evaluation_model,
+                temperature=cfg.temperature,
             )
-        client = ClaudeClient(claude_cfg)
+            client = ClaudeClient(claude_cfg)
+        except ValueError as e:
+            raise SystemExit(
+                f"{e}\n環境変数 ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN を設定するか、"
+                "--mock でスモークランしてください。"
+            )
         generator = client
         evaluator = client
 
