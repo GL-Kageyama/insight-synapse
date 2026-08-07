@@ -1,0 +1,64 @@
+# Insight Synapse 実行パラメータ
+# 正版: docs/03_コアコンポーネント/00_数値定義書.md（このYAMLは正版の実行時プレイバック）
+# 変更時は必ず 03/00 の正版と整合させること。各文書は数値を再定義しない。
+
+# 評価5軸の重み（03/00 §2.2）— 合計 1.0
+criteria:
+  quality: 0.25
+  logic: 0.20
+  creativity: 0.20
+  value: 0.25
+  risk: 0.10
+
+# 合格しきい値（03/00 §2.4）
+thresholds:
+  pass: 0.70          # overall >= 0.70 → Pass
+  revise: 0.50        # 0.50–0.69 → Revise、< 0.50 → Regenerate
+
+# Confidence / Unknown（03/00 §3）
+confidence:
+  # confidence = 0.5 × (1 − unknown_level) + 0.5 × mean(hypotheses.confidence)
+  hypothesis_weight: 0.5
+
+# 判断しきい値（03/00 §3.4）
+decision:
+  explore_when_unknown_level_ge: 0.6    # unknown_level >= 0.6 → Explore/Research 優先
+  create_when_confidence_ge: 0.75       # confidence >= 0.75
+  create_when_unknown_level_le: 0.25    # かつ unknown_level <= 0.25 → Create
+
+# 棄権機構（03/00 §3.5 / 11/09 §12 H1）
+abstention:
+  confidence_lt: 0.3     # confidence < 0.3 → abstain
+  unknown_level_ge: 0.7  # unknown_level >= 0.7 → abstain
+
+# 実験統計パラメータ（03/00 §8 / 11/09 §14）
+stats:
+  alpha: 0.05           # 有意水準（片側）
+  power: 0.80           # 目標検出力（β = 0.20）
+  n_per_condition: 20   # Step 1 各条件のタスク数
+  followup_n: 74        # 追試N（20ppを80%検出力で確定）
+
+# 判定帯域（03/00 §8.2）— 効果量 = 成功率の絶対差（pp）
+judgment_bands:
+  reject_lt: 5          # < 5pp または低下 → 仮説H棄却
+  indeterminate: 20     # 5–20pp → 判定不能帯域（追試必須）
+  uncertain: 39         # 20–39pp → 未確定帯域（追試必須）
+                        # >= 39pp → 決定的支持
+
+# 追試ループ停止条件（03/00 §8.3）
+followup:
+  max_replications: 1   # 追試は最大1回（初回+追試1回の計2回で打ち切り）
+  confirm_reject_lt: 5  # 追試結果 < 5pp → 棄却確定
+  confirm_support_ge: 20 # 追試結果 >= 20pp → 決定的支持確定
+                        # 5–20pp → 支持保留（未実証）として実験終了
+
+# 評価者の独立性（03/00 §2.6）
+evaluator:
+  calibration_sample_n: 50   # 人間較正サンプル数（Step 2 で実装）
+  calibration_pass_rho: 0.70 # ρ >= 0.70 → 較正済み
+
+# Claude API 設定
+claude:
+  generation_model: "claude-sonnet-4-5"   # 生成・判断用（処理条件）
+  evaluation_model: "claude-haiku-4-5"    # 評価用（独立評価系統）
+  temperature: 0.0                        # 全条件共通（交絡の排除）
