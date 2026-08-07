@@ -10,8 +10,6 @@ A cognitive architecture framework for AI that continuously improves its own thi
 
 単に回答や成果物を出すだけでなく、AI自身の**思考状態・判断過程・評価・改善**を管理対象にする。思考を「目的に向かって状態を変化させる処理」と捉え、その**思考経路そのもの**を再利用可能な知識にしようとするのが全体の狙いです。
 
-> このリポジトリの中心はコードではない。中心にあるものは、**AIが成長するための構造設計**である。
-
 ---
 
 ## 1. What is Insight Synapse
