@@ -1,0 +1,28 @@
+trace_id: trace-d539a6e9
+task_id: dev-02
+task_prompt: 'あなたはAIサービス企画の専門家です。以下のテーマについて、
+
+  Target（対象顧客）・Value（提供価値）・Risk（リスク）・Opportunity（機会）の観点から分析してください。
+
+
+  テーマ：料理初心者向けに冷蔵庫の中身から献立を提案する家計AI
+
+
+  分析は具体的に。どのような顧客が、どのような価値を得て、何がリスクで、
+
+  どのような機会があるのかを、整合的で実行可能性のある形で記述してください。'
+artifact: ''
+evaluation:
+  scores:
+    quality: 0.0
+    logic: 0.0
+    creativity: 0.0
+    value: 0.0
+    risk: 0.0
+  overall: 0.1
+  judgment: false
+success: false
+abstained: false
+confidence: 0.4747474747474747
+unknown_level: 0.6893939393939394
+reason: unknown_level 0.69 >= 0.6 のため探索を優先
