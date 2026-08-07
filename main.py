@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 from pathlib import Path
@@ -75,6 +76,21 @@ class MockClaude:
         return '{"quality": 0.8, "logic": 0.7, "creativity": 0.6, "value": 0.75, "risk": 0.4}'
 
 
+def _load_dotenv(path: Path = _REPO_ROOT / ".env") -> None:
+    """最小の .env ローダー（依存なし）。既存の環境変数は上書きしない。"""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Insight Synapse POC Step 1 対照実験")
     g = p.add_mutually_exclusive_group(required=True)
@@ -106,6 +122,7 @@ def resolve_conditions(args: argparse.Namespace) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _load_dotenv()
     args = parse_args(argv)
     cfg = POCConfig.load()
 
@@ -126,8 +143,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         claude_cfg.validate_lineage_separation()
         try:
-            import os
-
             claude_cfg.api_key = os.environ["ANTHROPIC_API_KEY"]
         except KeyError:
             raise SystemExit(
