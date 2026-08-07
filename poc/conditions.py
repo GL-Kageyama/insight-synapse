@@ -33,10 +33,16 @@ ANALYSIS_SYSTEM = (
 )
 
 # 既知/未知の列挙を促すプロンプト（C4 のみ使用）
+# JSON必須: 実モデルは長い説明文を返しがちなため、出力形式を最優先で固定する
 UNKNOWN_ENUMERATION_SYSTEM = (
-    "あなたはAIサービス企画の専門家です。分析を始める前に、このテーマについて"
-    "「既に分かっていること（known）」と「分かっていない・不確実なこと（unknown）」を整理してください。"
+    "あなたはAIサービス企画の専門家です。このテーマについて"
+    "「既に分かっていること（known）」と「分かっていない・不確実なこと（unknown）」を"
+    "JSONオブジェクトだけで整理してください。"
+    "Markdown・説明文・前置き・コードブロックは一切書かないこと。"
 )
+
+# 再生成リトライ（wisdom-council-layer 方式: 崩れたら再生成）最大試行回数
+MAX_ENUMERATION_RETRIES = 3  # 評価スコアのリトライ回数は evaluation/evaluator.py が所有
 
 # 探索（unknown_level >= 0.6）時の付加指示: 未知を明示的に扱う
 EXPLORE_GUIDANCE = (
@@ -129,38 +135,113 @@ def run_b0(
 
 # ---------------- C4: Insight Synapse 全成分 ----------------
 
+def _first_json_object(text: str) -> str | None:
+    """テキスト中から最初の平衡した JSON オブジェクト {...} を抽出する。
+
+    前後に Markdown・説明文があっても動作する（文字列内の { } は無視）。
+    """
+    start = text.find("{")
+    if start == -1:
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
 def parse_known_unknown(text: str) -> tuple[list[str], list[UnknownItem]]:
     """生成系Claude の既知/未知応答をパースする。
 
-    壊れた出力は手で直さず「再生成」対象にするため、ここでは parse に失敗したら
+    壊れた出力は手で直さず「再生成」対象にするため、parse に失敗したら
     明確な ValueError を投げる（broken output → regenerate 方針）。
+    まず全文を JSON として試し、次に平衡ブラケット抽出で `known` を含む
+    オブジェクトを探す。
     """
-    json_candidates = re.findall(r"\{[\s\S]*\"known\"[\s\S]*\}", text)
-    for cand in json_candidates:
+    candidates: list[str] = []
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        candidates.append(stripped)  # 応答全体がJSON
+    obj = _first_json_object(text)
+    if obj and obj not in candidates:
+        candidates.append(obj)
+
+    for cand in candidates:
         try:
             data = json.loads(cand)
-            known = [str(k) for k in data.get("known", [])]
-            unknown = []
-            for u in data.get("unknown", []):
-                status = str(u.get("status", "unresolved"))
-                if status not in ("resolved", "partial", "unresolved"):
-                    status = "unresolved"
-                unknown.append(
-                    UnknownItem(
-                        item=str(u.get("item", "")),
-                        importance=_clamp(float(u.get("importance", 0.5))),
-                        status=status,
-                    )
-                )
-            if unknown:
-                return known, unknown
-        except (json.JSONDecodeError, ValueError, TypeError):
+        except json.JSONDecodeError:
             continue
+        if not isinstance(data, dict) or "known" not in data:
+            continue
+        known = [str(k) for k in data.get("known", [])]
+        unknown = []
+        for u in data.get("unknown", []):
+            if not isinstance(u, dict):
+                continue
+            status = str(u.get("status", "unresolved"))
+            if status not in ("resolved", "partial", "unresolved"):
+                status = "unresolved"
+            unknown.append(
+                UnknownItem(
+                    item=str(u.get("item", "")),
+                    importance=_clamp(float(u.get("importance", 0.5))),
+                    status=status,
+                )
+            )
+        if unknown:
+            return known, unknown
     raise ValueError(f"known/unknown 応答をパースできませんでした（再生成対象）: {text[:200]}")
 
 
 def _clamp(v: float) -> float:
     return max(0.0, min(1.0, v))
+
+
+def _enumerate_known_unknown(generator: Generator, task_prompt: str) -> tuple[list[str], list[UnknownItem]]:
+    """既知/未知を列挙させ、形式エラー時はエラー内容をフィードバックして再生成する（最大3回）。
+
+    wisdom-council-layer 方式: 崩れた出力は手で直さず再生成する。
+    """
+    base_user = (
+        f"テーマ：{task_prompt}\n\n"
+        "known は既に分かっていること、unknown は分かっていない・不確実なこと。"
+        "unknown の各項目に重要度（0.0〜1.0）と解決度（resolved / partial / unresolved）を付けること。\n"
+        '出力はこの形式のJSONオブジェクトのみ:\n'
+        '{"known": ["..."], "unknown": [{"item": "...", "importance": 0.5, "status": "unresolved"}]}'
+    )
+    last_err = ""
+    for attempt in range(MAX_ENUMERATION_RETRIES):
+        feedback = ""
+        if attempt > 0:
+            feedback = (
+                "\n\n前回の出力は形式エラーでした: "
+                f"{last_err}\n説明文を一切付けず、JSONオブジェクトのみを出力してください。"
+            )
+        raw = generator.generate(system=UNKNOWN_ENUMERATION_SYSTEM, user=base_user + feedback)
+        try:
+            return parse_known_unknown(raw)
+        except ValueError as e:
+            last_err = str(e)
+    raise ValueError(
+        f"known/unknown列挙が{MAX_ENUMERATION_RETRIES}回連続で形式エラー（再生成済み）: {last_err}"
+    )
 
 
 def build_thought_trace(
@@ -214,20 +295,10 @@ def run_c4(
 
     engine = EvaluationEngine(evaluator, pass_threshold=pass_threshold)
 
-    # ---- 1. 既知/未知の列挙 → State 構築 ----
+    # ---- 1. 既知/未知の列挙 → State 構築（形式エラー時は再生成リトライ） ----
     try:
-        raw = generator.generate(
-            system=UNKNOWN_ENUMERATION_SYSTEM,
-            user=(
-                f"テーマ：{task_prompt}\n\n"
-                "known は既に分かっていること、unknown は分かっていない・不確実なこと。"
-                'unknown の各項目に重要度（0.0〜1.0）と解決度（resolved / partial / unresolved）を付けること。\n'
-                '最終行にJSONで出力:\n'
-                '{"known": ["..."], "unknown": [{"item": "...", "importance": 0.5, "status": "unresolved"}]}'
-            ),
-        )
-        known, unknown = parse_known_unknown(raw)
-    except Exception as e:  # 生成・パース失敗 → broken output として失敗記録
+        known, unknown = _enumerate_known_unknown(generator, task_prompt)
+    except Exception as e:  # 3回再生成後も失敗 → broken output として明示的に失敗記録
         return ConditionResult(
             condition="C4",
             task_id=task_id,

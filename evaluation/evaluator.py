@@ -23,6 +23,9 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "risk": 0.10,
 }
 
+# 評価スコア抽出の再生成リトライ最大回数（wisdom-council-layer 方式: 崩れたら再生成）
+MAX_EVALUATION_RETRIES = 3
+
 # 採点ルーブリック（03/00 §2.5 の行動的定義）を評価プロンプトに埋め込む
 RUBRIC = """各軸を0.0〜1.0で採点する。リスク(Risk)は低いほど良い。
 
@@ -113,19 +116,42 @@ class EvaluationEngine:
         self.pass_threshold = pass_threshold
 
     def evaluate(self, artifact: str, task_prompt: str = "") -> EvaluationResult:
-        """成果物を5軸で採点する。盲検化のため task_prompt に条件情報を含めないこと。"""
+        """成果物を5軸で採点する。盲検化のため task_prompt に条件情報を含めないこと。
+
+        スコアJSONの抽出に失敗した場合、形式エラーのフィードバックを付けて
+        再生成する（最大3回。wisdom-council-layer 方式: 崩れたら再生成）。
+        """
         system = (
             "あなたは成果物の評価者です。提示された成果物を、所定のルーブリックに従い"
             "5軸（Quality / Logic / Creativity / Value / Risk）で公平に採点してください。"
             "成果物の出所・生成方法は知らされていません。\n\n" + RUBRIC
         )
-        user = (
+        base_user = (
             f"【評価対象の成果物】\n{artifact}\n\n"
             f"【元のタスク】\n{task_prompt}\n\n"
             "上記の成果物を5軸で採点し、最終行にJSONでスコアを出力してください。"
         )
-        raw = self.client.evaluate(system=system, user=user)
-        scores = parse_scores(raw)
+        last_err = ""
+        raw = ""
+        for attempt in range(MAX_EVALUATION_RETRIES):
+            feedback = ""
+            if attempt > 0:
+                feedback = (
+                    "\n\n前回の応答からスコアJSONを抽出できませんでした（"
+                    f"{last_err}）。説明文はそのままでも構いませんが、"
+                    '必ず最終行に {"quality": 0.5, "logic": 0.5, "creativity": 0.5, '
+                    '"value": 0.5, "risk": 0.5} 形式のJSONを出力してください。'
+                )
+            raw = self.client.evaluate(system=system, user=base_user + feedback)
+            try:
+                scores = parse_scores(raw)
+                break
+            except ValueError as e:
+                last_err = str(e)
+        else:
+            raise ValueError(
+                f"5軸スコアの抽出が{MAX_EVALUATION_RETRIES}回連続で失敗（再生成済み）: {last_err}"
+            )
         overall = compute_overall(scores, self.weights)
         return EvaluationResult(
             scores=scores,
